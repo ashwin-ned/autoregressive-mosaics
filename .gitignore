@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.so
+.DS_Store
+.env
+.env.*
+.venv/
+venv/
+ver1-firstpoc/
+ver4-benchmark/
