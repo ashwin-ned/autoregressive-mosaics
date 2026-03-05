@@ -97,6 +97,14 @@ class Canvas:
                 if not (has_neg and has_pos):
                     self.set_pixel(r, c, color)
 
+    def has_drawn_pixels(self, bg="#000000"):
+        """True when at least one cell differs from the untouched background."""
+        for row in self.grid:
+            for value in row:
+                if value != bg:
+                    return True
+        return False
+
 def generate_blocking(inputs, max_tokens, temp):
     with torch.no_grad():
         return model.generate(
@@ -107,6 +115,64 @@ def generate_blocking(inputs, max_tokens, temp):
             top_p=0.9,
             pad_token_id=tokenizer.eos_token_id
         )
+
+def extract_python_code(raw_output: str) -> str:
+    """Best-effort code extraction for mixed markdown/prose model outputs."""
+    text = raw_output.strip()
+    if not text:
+        return text
+
+    def _clean(candidate: str) -> str:
+        candidate = candidate.strip()
+        candidate = re.sub(r"^\s*```(?:python|py)?\s*\n?", "", candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"\n?```\s*$", "", candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"^\s*(python|py)\s*\n", "", candidate, flags=re.IGNORECASE)
+        return candidate.strip()
+
+    def _is_compilable(candidate: str) -> bool:
+        try:
+            compile(candidate, "<llm_generated>", "exec")
+            return True
+        except Exception:
+            return False
+
+    candidates = []
+
+    # 1) Prefer explicit fenced Python blocks.
+    fenced_python = re.findall(r"```(?:python|py)\s*\n(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
+    candidates.extend(fenced_python)
+
+    # 2) Fallback to any fenced block.
+    fenced_any = re.findall(r"```\s*\n(.*?)```", text, flags=re.DOTALL)
+    candidates.extend(fenced_any)
+
+    # 3) If fence is opened but not closed, consume tail after the first fence.
+    if "```" in text and not fenced_python and not fenced_any:
+        tail = text.split("```", 1)[1]
+        candidates.append(tail)
+
+    # 4) Unfenced function-style output.
+    render_fn = re.search(r"(def\s+render\s*\(\s*canvas\s*\)\s*:[\s\S]*)", text)
+    if render_fn:
+        candidates.append(render_fn.group(1))
+
+    # 5) Flat-script fallback: start at first likely code line.
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        if re.match(r"^\s*(def\s+\w+\s*\(|canvas\.|for\s|if\s|while\s|[A-Za-z_]\w*\s*=|#|return\b)", line):
+            candidates.append("\n".join(lines[idx:]))
+            break
+
+    # 6) Last resort.
+    candidates.append(text)
+
+    for candidate in candidates:
+        cleaned = _clean(candidate)
+        if cleaned and _is_compilable(cleaned):
+            return cleaned
+
+    # If none compile cleanly, return best-effort cleaned raw for existing error handling.
+    return _clean(candidates[0] if candidates else text)
 
 @app.get("/gpu_stats")
 def get_gpu_stats():
@@ -163,8 +229,7 @@ async def generate_mosaic(req: MosaicRequest):
     logger.info(f"Generated python logic in {t1-t0:.2f}s")
     
     # Extract Python code
-    code_match = re.search(r'```python\n(.*?)\n```', raw_output, re.DOTALL | re.IGNORECASE)
-    python_code = code_match.group(1).strip() if code_match else raw_output
+    python_code = extract_python_code(raw_output)
 
     # --- Secure Restricted Execution Environment ---
     canvas_instance = Canvas(req.rows, req.cols)
@@ -172,7 +237,10 @@ async def generate_mosaic(req: MosaicRequest):
     # Safely expose standard built-ins required for spatial math/looping
     safe_builtins = {
         'range': range, 'int': int, 'float': float, 'round': round,
-        'max': max, 'min': min, 'abs': abs, 'len': len, 'enumerate': enumerate, 'list': list
+        'max': max, 'min': min, 'abs': abs, 'len': len, 'enumerate': enumerate, 'list': list,
+        'sum': sum, 'zip': zip, 'sorted': sorted, 'reversed': reversed,
+        'tuple': tuple, 'dict': dict, 'set': set, 'str': str, 'bool': bool, 'pow': pow,
+        'any': any, 'all': all
     }
     
     # Pre-inject `canvas` to protect against flat-script (non-function) hallucinations
@@ -183,26 +251,42 @@ async def generate_mosaic(req: MosaicRequest):
     }
     safe_locals = {}
 
+    runtime_error = None
+
     try:
         # Compile and execute the LLM's AST
         exec(python_code, safe_globals, safe_locals)
-        
-        # Check execution modes
-        if "render" in safe_locals:
-            safe_locals["render"](canvas_instance)
-        elif "render" in safe_globals:
-            safe_globals["render"](canvas_instance)
-        else:
-            # Code executed flatly against the globally injected `canvas`
-            pass
-            
     except Exception as e:
-        logger.error(f"LLM Code Execution Failed: {e}")
-        # Rendering failure heuristic: Draw a visual Error "X"
-        canvas_instance.fill("#3b0707") # Dark red
-        canvas_instance.line(0, 0, req.rows-1, req.cols-1, "#ff0000")
-        canvas_instance.line(0, req.cols-1, req.rows-1, 0, "#ff0000")
-        python_code = f"# COMPILE ERROR DETECTED:\n# {str(e)}\n\n" + python_code
+        runtime_error = f"exec failed: {e}"
+
+    if runtime_error is None:
+        try:
+            # Check execution modes
+            if "render" in safe_locals:
+                render_fn = safe_locals["render"]
+            elif "render" in safe_globals:
+                render_fn = safe_globals["render"]
+            else:
+                render_fn = None
+
+            if render_fn is not None:
+                try:
+                    render_fn(canvas_instance)
+                except TypeError:
+                    # Some generations define `render()` and use injected global `canvas`.
+                    render_fn()
+            # Else: code may already have executed flatly against global `canvas`.
+        except Exception as e:
+            runtime_error = f"render failed: {e}"
+
+    if runtime_error is not None:
+        logger.error(f"LLM Code Execution Failed: {runtime_error}")
+        # Keep partial valid outputs if any pixels were successfully drawn.
+        if not canvas_instance.has_drawn_pixels():
+            canvas_instance.fill("#3b0707") # Dark red
+            canvas_instance.line(0, 0, req.rows-1, req.cols-1, "#ff0000")
+            canvas_instance.line(0, req.cols-1, req.rows-1, 0, "#ff0000")
+        python_code = f"# COMPILE ERROR DETECTED:\n# {runtime_error}\n\n" + python_code
 
     return {
         "code": python_code,
