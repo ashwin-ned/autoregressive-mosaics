@@ -12,6 +12,22 @@ The results are often visually primitive, unstable, or unintentionally abstract,
 
 As with any art, outputs are open to interpretation. Squint a little: what do you see? Does the result resemble what you asked for?
 
+## Model Used
+
+This project currently uses:
+
+- `Qwen/Qwen2.5-14B-Instruct`
+
+Qwen2.5-14B-Instruct is a text-first instruction-following language model. It is trained on large-scale mixed corpora (natural language + code) and tuned for instruction completion, reasoning, and structured generation. It is not a native image model in this setup, and it does not receive pixel tensors or vision encoder features here.
+
+That makes the behavior in this project interesting: the model can still produce outputs that resemble visual structure, even though it is only generating text tokens.
+
+### Research Question
+
+If a language model is trained primarily to model text and code, **to what extent can it still recover coherent 2D visual concepts when forced to act as a pixel-level or programmatic painter?**
+
+Autoregressive Mosaics treats this as an empirical question by constraining generation and observing where geometry emerges, degrades, or collapses.
+
 ## Two Generation Methods
 
 To explore this phenomenon, the project includes two distinct generation pipelines.
@@ -94,3 +110,14 @@ Note: both versions default to port `8123`, so run one backend at a time.
 - This is an interpretability-flavored art experiment probing the boundary between text autoregression and spatial reasoning.
 - Failures are part of the signal, not just noise.
 
+## Citation
+
+```bibtex
+@misc{qwen2_5_14b_instruct,
+  title        = {Qwen2.5-14B-Instruct},
+  author       = {{Qwen Team}},
+  year         = {2024},
+  howpublished = {\url{https://huggingface.co/Qwen/Qwen2.5-14B-Instruct}},
+  note         = {Model card}
+}
+```
