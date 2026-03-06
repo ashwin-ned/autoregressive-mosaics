@@ -110,14 +110,27 @@ Note: both versions default to port `8123`, so run one backend at a time.
 - This is an interpretability-flavored art experiment probing the boundary between text autoregression and spatial reasoning.
 - Failures are part of the signal, not just noise.
 
-## Citation
+## Copyright and License
 
+**Copyright © 2026. All Rights Reserved.**
+
+This code is provided for viewing purposes only in conjunction with the CVPR art gallery. Copying, modification, distribution, and derivative works without citations are prohibited.
+
+## Citation
+If you reference this work or repository, please cite it as follows:
+
+**Plain Text:**
+A. Nedungadi, "Autoregressive Mosaics." GitHub, 2026. [Online]. Available: https://github.com/ashwin-ned/autoregressive-mosaics
+
+
+**BibTeX:**
 ```bibtex
-@misc{qwen2_5_14b_instruct,
-  title        = {Qwen2.5-14B-Instruct},
-  author       = {{Qwen Team}},
-  year         = {2024},
-  howpublished = {\url{https://huggingface.co/Qwen/Qwen2.5-14B-Instruct}},
-  note         = {Model card}
+@misc{ned2026autoregressivemosaics,
+  author = {Nedungadi, Ashwin},
+  title = {Autoregressive Mosaics},
+  year = {2026},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{[https://github.com/ashwin-ned/autoregressive-mosaics](https://github.com/ashwin-ned/autoregressive-mosaics)}}
 }
-```
+
