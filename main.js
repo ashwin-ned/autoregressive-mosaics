@@ -1,7 +1,7 @@
 // ── GALLERY ──────────────────────────────────────────────────
 const gdata = [
   // Code Canvas
-  {p: 'hierarchical mosaic',         t: 'code',  src: 'gallery_images/code-canvas/hierarchical-mosaic-1771859003512.png'},
+  {p: 'a red heart',                  t: 'code',  src: 'gallery_images/code-canvas/a-red-heart-1771859003512.png'},
   {p: 'pyramids of giza',            t: 'code',  src: 'gallery_images/code-canvas/symbolic-pyramids-of-giza-1772107669287.png'},
   {p: 'a sunset in malibu',          t: 'code',  src: 'gallery_images/code-canvas/symbolic-a-sunset-in-malibu-1772108429304.png'},
   {p: 'flag of the united states',   t: 'code',  src: 'gallery_images/code-canvas/symbolic-flag-of-the-united-s-1772109529064.png'},
