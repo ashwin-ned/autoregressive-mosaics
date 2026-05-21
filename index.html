@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autoregressive Mosaics — CVPR 2026 AI Art Gallery</title>
+  <meta name="description" content="Probing emergent 2D spatial reasoning in text-only LLMs. CVPR 2026 AI Art Gallery submission by Ashwin Nedungadi.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/dm-serif-display@5.0.14/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5.1.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-serif-4@5.0.21/400.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h2 class="sr-only">Autoregressive Mosaics — CVPR 2026 AI Art Gallery, by Ashwin Nedungadi</h2>
+
+<div class="page">
+
+  <nav class="nav">
+    <div class="nav-logo">
+      <div class="qdots"><div class="qd q1"></div><div class="qd q2"></div><div class="qd q3"></div><div class="qd q4"></div></div>
+      Autoregressive Mosaics
+    </div>
+    <ul class="nav-links">
+      <li><a href="#abstract">Abstract</a></li>
+      <li><a href="#gallery">Gallery</a></li>
+      <li><a href="#method">Method</a></li>
+      <li><a href="#cite">Cite</a></li>
+    </ul>
+  </nav>
+
+  <div class="hero">
+    <canvas class="pixel-bg" id="heroCvs"></canvas>
+    <div class="hero-fade"></div>
+    <div class="hero-c">
+      <div class="badge">
+        <div class="badge-sq"><div class="bs q1"></div><div class="bs q2"></div><div class="bs q3"></div><div class="bs q4"></div></div>
+        <span class="badge-text">CVPR 2026 · AI Art Gallery</span>
+      </div>
+      <h1 class="hero-title"><em>Autoregressive</em><br>Mosaics</h1>
+      <p class="hero-sub">Probing emergent 2D spatial reasoning in text-only LLMs</p>
+      <p class="hero-author"><strong>Ashwin Nedungadi</strong></p>
+      <p class="hero-aff">Universität Rostock · Institute for Visual and Analytical Computing</p>
+      <div class="btns">
+        <a href="javascript:void(0)" class="btn btn-r">
+          <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M17 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2z"/></svg>
+          Paper
+        </a>
+        <a href="https://huggingface.co/" target="_blank" class="btn btn-y">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9h.01M15 9h.01M8.5 13.5s1 2 3.5 2 3.5-2 3.5-2"/></svg>
+          Live Demo
+        </a>
+        <a href="https://www.youtube.com/watch?v=ukhYmadFD1M" target="_blank" class="btn btn-g">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Video
+        </a>
+        <a href="https://github.com/ashwin-ned/autoregressive-mosaics" target="_blank" class="btn btn-b">
+          <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <section id="abstract" class="rv">
+    <div class="slabel"><div class="sq q1"></div>Overview</div>
+    <p>The idea is simple: humans are naturally great at creating mosaic art. From the Roman Empire to French Neo-Impressionism, we can effortlessly place individual strokes to form a larger, coherent image — balancing local action with global structure. Large Language Models, however, struggle with this because they fundamentally <strong>lack spatial grounding</strong>.</p>
+    <div class="rq">
+      <p>If a language model is trained primarily on text and code, to what extent can it still recover coherent 2D visual concepts when forced to act as a pixel-level or programmatic painter?</p>
+    </div>
+    <p><em class="hl">Autoregressive Mosaics</em> attempts to force an LLM trained only on text to paint one discrete pixel at a time. The system gives the model a blank grid (M&thinsp;&times;&thinsp;N) and a text prompt; the model must infer where to place structure and color step-by-step, using only its linguistic priors.</p>
+    <p>The results are often visually primitive, unstable, or unintentionally abstract — and that is exactly the point. They offer a raw, unfiltered look into how text-only models represent and fracture geometry, shape, and everyday visual concepts. As with any art, outputs are open to interpretation. Squint a little: what do you see?</p>
+  </section>
+
+  <div class="divider"></div>
+  <section id="video" class="rv">
+    <div class="slabel"><div class="sq q2"></div>Demonstration</div>
+    <div class="vid-wrap">
+      <iframe src="https://www.youtube.com/embed/ukhYmadFD1M" allowfullscreen loading="lazy"></iframe>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+  <section id="gallery" class="rv">
+    <div class="slabel"><div class="sq q3"></div>Generations</div>
+    <div class="gf">
+      <button class="fb act" onclick="setF('all',this)">All</button>
+      <button class="fb" onclick="setF('ascii',this)">ASCII Canvas</button>
+      <button class="fb" onclick="setF('code',this)">Code Canvas</button>
+    </div>
+    <div class="gg" id="gg"></div>
+  </section>
+
+  <div class="divider"></div>
+  <section id="method" class="rv">
+    <div class="slabel"><div class="sq q4"></div>Generation Methods</div>
+    <p>Two distinct pipelines explore the same core phenomenon from different angles, probing where geometry emerges, degrades, or collapses under autoregressive pressure.</p>
+    <div class="mg">
+      <div class="mc m1">
+        <div class="mn">01</div>
+        <div class="mt">ver2 — ASCII Canvas</div>
+        <div class="mname">The Literal Painter</div>
+        <p>In a single forward pass, the LLM generates an ASCII topology grid alongside a symbol-to-color palette. Every grid cell is a deliberate per-position decision. Because LLMs predict tokens in strict 1D sequence, 2D consistency — object boundaries, symmetry, position memory — quickly degrades. Shapes drift, tear, and collapse into fragmented, often compelling abstractions.</p>
+        <span class="mtag">Single Pass</span><span class="mtag">Direct Pixel</span><span class="mtag">ASCII + Palette</span>
+      </div>
+      <div class="mc m2">
+        <div class="mn">02</div>
+        <div class="mt">ver3 — Code Canvas</div>
+        <div class="mname">The Symbolic Artist</div>
+        <p>Instead of raw pixels, the LLM outputs Python rendering logic via a constrained drawing API (fill, rect, line, circle, triangle). A deterministic renderer rasterizes the result. This neuro-symbolic pipeline aligns with LLM strengths — symbolic decomposition, procedural logic, code synthesis — yielding sudden spatial coherence absent from the ASCII approach.</p>
+        <span class="mtag">Code Generation</span><span class="mtag">Neuro-Symbolic</span><span class="mtag">Deterministic</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+  <section id="cite" class="rv">
+    <div class="slabel"><div class="sq" style="background:var(--yel)"></div>Citation</div>
+    <div class="bib">
+      <button class="cpbtn" id="cpbtn" onclick="doCopy()">Copy</button>
+      <pre><span class="kw">@misc</span>{<span class="str">ned2026autoregressivemosaics</span>,
+  <span class="kw">author</span>       = {<span class="str">Nedungadi, Ashwin</span>},
+  <span class="kw">title</span>        = {<span class="str">Autoregressive Mosaics</span>},
+  <span class="kw">year</span>         = {<span class="str">2026</span>},
+  <span class="kw">publisher</span>    = {<span class="str">GitHub</span>},
+  <span class="kw">booktitle</span>    = {<span class="str">CVPR AI Art Gallery</span>},
+  <span class="kw">howpublished</span> = {\url{<span class="str">https://github.com/ashwin-ned/autoregressive-mosaics</span>}}
+}</pre>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+  <div class="ft">
+    <div class="ftl">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <div class="qdots"><div class="qd q1"></div><div class="qd q2"></div><div class="qd q3"></div><div class="qd q4"></div></div>
+        Autoregressive Mosaics · CVPR 2026 AI Art Gallery
+      </div>
+      Copyright © 2026 Ashwin Nedungadi. All Rights Reserved.
+    </div>
+    <div class="ftr"><a href="https://www.ashwin-ned.com" target="_blank">ashwin-ned.com</a></div>
+  </div>
+
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
