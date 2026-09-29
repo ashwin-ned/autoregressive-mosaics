@@ -1,136 +1,82 @@
 # Autoregressive Mosaics
 
+**Probing 2D Spatial Reasoning in Text-Only Language Models**
+
+Ashwin Nedungadi · Stefan Oehmcke · Stefan Lüdtke
+
+Institute for Visual & Analytic Computing (VAC), University of Rostock
+
+[Paper](https://arxiv.org/abs/2608.30751) · [Project page](https://ashwin-ned.github.io/autoregressive-mosaics/) · [Poster](assets/Autoregressive_Mosaics_A0.pdf) · [Prototype demo](https://huggingface.co/spaces/ashnedungadi/AutoregressiveMosaics)
+
 ![Autoregressive Mosaics Banner](results/banner_1920x1080.png)
 
-## Overview
+## AM-Bench
 
-The idea is simple: humans are naturally great at creating mosaic art. From the Roman Empire to French Neo-Impressionism, we can effortlessly place individual strokes to form a larger, coherent image, balancing local action with global structure.
+How well can text-only language models compose 2D layouts, how does the output medium affect this ability, and what spatial information do they represent before drawing?
 
-Large Language Models, however, struggle with this because they fundamentally lack spatial grounding. **Autoregressive Mosaics** is an attempt to force an LLM trained only on text to paint a picture one discrete pixel at a time. The system gives the model a blank grid (`M x N`) and a text prompt; the model must infer where to place structure and color step-by-step using only its linguistic priors.
+AM-Bench separates two tasks on a deterministic 24 × 24 canvas:
 
-The results are often visually primitive, unstable, or unintentionally abstract, but that is exactly the point. They offer a raw look into how text-only models represent (and fracture) geometry, shape, and visual concepts.
+- **Translation:** turn fully specified geometry into drawing code, evaluated against exact references with part-wise intersection-over-union (PIoU).
+- **Layout:** compose an arrangement from an underspecified prompt, evaluated by two vision-language judges on fidelity, shape, color, spatial arrangement, and completeness.
 
-As with any art, outputs are open to interpretation. Squint a little: what do you see? Does the result resemble what you asked for?
+The study evaluates eight open-weight models (8B–34B) across four families. The layout evaluation covers 150 prompts in three tiers and 13,200 generation attempts.
 
-## Model Used
+## Findings
 
-This project currently uses:
+- **Geometry is easier than composition.** All eight models achieve a median translation PIoU of 1.0, while layout performance varies substantially.
+- **The medium matters.** SVG improves pooled layout scores by 0.37 points on a 0–5 scale over the custom Python API at matched resolution (95% CI: 0.26–0.47).
+- **Coarse layout information is decodable before generation.** Probes beat a text baseline in all eight models. A two-model analysis recovers shared layout structure but not model-specific output layouts, consistent with incremental construction.
 
-- `Qwen/Qwen2.5-14B-Instruct`
+These findings concern coarse, code-generated images. See the paper for evaluation details, controls, and limitations.
 
-Qwen2.5-14B-Instruct is a text-first instruction-following language model. It is trained on large-scale mixed corpora (natural language + code) and tuned for instruction completion, reasoning, and structured generation. It is not a native image model in this setup, and it does not receive pixel tensors or vision encoder features here.
+## Repository
 
-That makes the behavior in this project interesting: the model can still produce outputs that resemble visual structure, even though it is only generating text tokens.
+This repository hosts the project website and earlier exploratory prototypes. The gallery and demo are prototype outputs, separate from the paper’s benchmark evaluation.
 
-### Research Question
+- `index.html`, `style.css`, `main.js`: project website.
+- `assets/`: downloadable poster.
+- `gallery_images/`, `results/`: prototype outputs and visual assets.
+- `ver2-asciicanvas/`: ASCII grid and color-palette prototype.
+- `ver3-codecanvas/`: Python drawing-code prototype.
 
-If a language model is trained primarily to model text and code, **to what extent can it still recover coherent 2D visual concepts when forced to act as a pixel-level or programmatic painter?**
+Both prototypes use `Qwen/Qwen2.5-14B-Instruct`; this is distinct from the paper’s eight-model benchmark roster.
 
-Autoregressive Mosaics treats this as an empirical question by constraining generation and observing where geometry emerges, degrades, or collapses.
+## Run locally
 
-## Two Generation Methods
+Preview the static website:
 
-To explore this phenomenon, the project includes two distinct generation pipelines.
+```bash
+python -m http.server 8000
+```
 
-### 1) ASCII Canvas (`ver2-asciicanvas`)
+Open `http://localhost:8000`.
 
-In this approach, the model behaves like a literal cell-by-cell painter.
-
-- In a **single forward pass**, the LLM generates:
-  - an ASCII topology grid inside `<ascii>...</ascii>`
-  - a symbol-to-color map inside `<palette>...</palette>`
-- Each grid cell is directly represented in text, so the model must make an explicit decision per position.
-- The backend parses, sanitizes, and force-fits the result to exact `M x N` shape, then maps characters to HEX colors.
-
-Why this fails interestingly:
-
-- The model predicts tokens in a strict 1D sequence.
-- 2D consistency (object boundaries, symmetry, position memory) is hard to sustain over long generations.
-- Shapes can drift, tear, collapse, or mutate across rows, producing fragmented but often compelling abstractions.
-
-### 2) Code Canvas (`ver3-codecanvas`)
-
-In this approach, the model behaves like a mosaic artist who writes code.
-
-- Instead of raw pixels, the LLM outputs Python rendering logic (`render(canvas)`).
-- The code uses a constrained drawing API (`fill`, `set_pixel`, `rect`, `line`, `circle`, `triangle`).
-- A deterministic renderer executes that code and rasterizes the final grid.
-
-Why this performs better:
-
-- The model can express intent in compact symbolic form ("draw a circle at center") rather than committing to every cell token.
-- Deterministic geometry handles exact spatial bookkeeping.
-- This aligns with LLM strengths: symbolic decomposition, procedural logic, and code synthesis.
-- The result is a neuro-symbolic pipeline: language model for high-level plan, strict engine for spatial execution.
-
-## Repository Layout
-
-- `ver2-asciicanvas/` - ASCII topology + palette generation backend and UI.
-- `ver3-codecanvas/` - Code-generation neuro-symbolic backend and UI.
-- `results/` - Sample outputs, visualization script, and project banner.
-- `backend.py`, `index.html` - earlier root-level prototype files.
-
-## Quick Start
-
-### Requirements
-
-- Python 3.10+
-- PyTorch + Transformers stack
-- GPU recommended for Qwen 14B
-
-Install typical dependencies in your environment (example names may vary by setup):
+To run a prototype, use Python 3.10+ and a suitable GPU for the 14B model:
 
 ```bash
 pip install fastapi uvicorn torch transformers accelerate
-```
-
-### Run ASCII Canvas (ver2)
-
-```bash
-cd ver2-asciicanvas
+cd ver2-asciicanvas  # or ver3-codecanvas
 python backend.py
 ```
 
-Then open: `http://localhost:8123`
+Open `http://localhost:8123`. Run one prototype at a time; both use the same port.
 
-### Run Code Canvas (ver3)
+## Citation
 
-```bash
-cd ver3-codecanvas
-python backend.py
+```bibtex
+@misc{nedungadi2026autoregressivemosaics,
+  title = {Autoregressive Mosaics: Probing 2D Spatial Reasoning in Text-Only Language Models},
+  author = {Nedungadi, Ashwin and Oehmcke, Stefan and Lüdtke, Stefan},
+  year = {2026},
+  eprint = {2608.30751},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.AI},
+  url = {https://arxiv.org/abs/2608.30751}
+}
 ```
-
-Then open: `http://localhost:8123`
-
-Note: both versions default to port `8123`, so run one backend at a time.
-
-## What This Project Is (and Is Not)
-
-- This is not a production image generator.
-- This is an interpretability-flavored art experiment probing the boundary between text autoregression and spatial reasoning.
-- Failures are part of the signal, not just noise.
 
 ## Copyright and License
 
 **Copyright © 2026. All Rights Reserved.**
 
 This code is provided for viewing purposes only in conjunction with the CVPR art gallery. Copying, modification, distribution, and derivative works without citations are prohibited.
-
-## Citation
-If you reference this work or repository, please cite it as follows:
-
-**Plain Text:**
-A. Nedungadi, "Autoregressive Mosaics." GitHub, 2026. [Online]. Available: https://github.com/ashwin-ned/autoregressive-mosaics
-
-
-**BibTeX:**
-```bibtex
-@misc{ned2026autoregressivemosaics,
-  author = {Nedungadi, Ashwin},
-  title = {Autoregressive Mosaics},
-  year = {2026},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{[https://github.com/ashwin-ned/autoregressive-mosaics](https://github.com/ashwin-ned/autoregressive-mosaics)}}
-}
-

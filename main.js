@@ -209,7 +209,7 @@ window.addEventListener('resize', () => { clearTimeout(_resizeT); _resizeT = set
 
 // ── COPY BIBTEX ──────────────────────────────────────────────
 function doCopy() {
-  const txt = `@misc{ned2026autoregressivemosaics,\n  author       = {Nedungadi, Ashwin},\n  title        = {Autoregressive Mosaics},\n  year         = {2026},\n  publisher    = {GitHub},\n  booktitle    = {CVPR AI Art Gallery},\n  howpublished = {\\url{https://github.com/ashwin-ned/autoregressive-mosaics}}\n}`;
+  const txt = document.getElementById('bibtex').textContent;
   navigator.clipboard.writeText(txt).then(() => {
     const b = document.getElementById('cpbtn');
     b.textContent = 'Copied!';
