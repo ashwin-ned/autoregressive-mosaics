@@ -306,9 +306,10 @@ function fallbackCopy(txt, done) {
   ta.remove();
 }
 
-// ── HERO CONVERGENCE ANIMATION ──────────────────────────────
-// Left: vibrant chaos → right: four mosaic panels. Uses drawImage only (no getImageData),
-// so it works on file:// and GitHub Pages alike.
+// ── HERO "BOUNCE" ANIMATION ─────────────────────────────────
+// A wave of colour noise sweeps in left → right, the mosaics lock in right → left,
+// then the noise sweeps back left → right and the tiles return right → left, in a loop.
+// Uses drawImage only (no getImageData), so it works on file:// and GitHub Pages alike.
 const PANEL_SRCS = [
   'symbolic-a-red-apple--1772103332350.png',
   'symbolic-king-tut-s-tomb-1772661687365.png',
@@ -323,10 +324,34 @@ const CHAOS = [
   '#FF006E','#FB5607','#43AA8B','#277DA1','#F72585'
 ];
 
+// Timeline (ms). One cycle = tiles sweep in (R→L) · hold · noise sweeps back (L→R) · hold.
+const HERO = {
+  CELL: 28,
+  INTRO: 1100,      // initial noise fade-in sweep, left → right
+  TILE_SWEEP: 4200, // mosaics lock in, right → left
+  TILE_HOLD: 2600,  // all tiles visible
+  NOISE_SWEEP: 2600,// tiles dissolve back to noise, left → right
+  NOISE_HOLD: 700,  // all noise before the next tile sweep
+  FADE: 180,        // cross-fade per cell at a state change
+  FLASH: 0.22,      // brightness of the wave front (0 to disable)
+  SLANT: 0.08,      // how much rows tilt the wave front
+  J_LOCK: 400,      // random per-cell spread of each wave front
+  J_FREE: 300,
+};
+HERO.PERIOD = HERO.TILE_SWEEP + HERO.J_LOCK + HERO.TILE_HOLD + HERO.NOISE_SWEEP + HERO.J_FREE + HERO.NOISE_HOLD;
+HERO.T0 = HERO.INTRO * 0.55; // first tile sweep starts while the intro wave is still travelling
+
 const hc = $('#heroCvs');
 const hctx = hc.getContext('2d');
-const CELL = 28;
-let _panelImgs = [], _target = null, _aw, _ah, _cells = [], _start, _rafId, _resizeT, _loopAt, _lastW = 0, _heroVisible = true;
+let _panelImgs = [], _target = null, _aw, _ah, _cells = [], _start, _rafId, _resizeT, _lastW = 0, _heroVisible = true;
+
+// Deterministic per-cell, per-cycle jitter in [0, 1).
+function _hash(i, k) {
+  let h = (i * 374761393 + k * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+const _clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 function _preloadPanels() {
   return Promise.all(PANEL_SRCS.map(src => new Promise(res => {
@@ -353,42 +378,70 @@ function _buildCells() {
   hc.width = _aw; hc.height = _ah;
   hctx.imageSmoothingEnabled = false;
   _buildTarget(_aw, _ah);
-  const cols = Math.ceil(_aw / CELL), rows = Math.ceil(_ah / CELL);
+  const cols = Math.ceil(_aw / HERO.CELL), rows = Math.ceil(_ah / HERO.CELL);
   _start = performance.now();
   _cells = [];
-  let maxLock = 0;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const nx = c / cols;
-      const enterDelay = c * 10 + r * 3 + Math.random() * 30;
-      const lockAt = enterDelay + 200 + (1 - nx) * 4500 + Math.random() * 500;
-      maxLock = Math.max(maxLock, lockAt);
+      const nx = c / cols, ny = r / rows;
+      const pos = (nx + HERO.SLANT * ny) / (1 + HERO.SLANT); // 0 = left edge, 1 = right edge
       const flipInterval = 80 + nx * 340 + Math.random() * 140;
-      _cells.push({ c, r, nx, chaosColor: CHAOS[(Math.random() * CHAOS.length) | 0],
-        nextFlip: enterDelay + Math.random() * flipInterval, flipInterval, enterDelay, lockAt, locked: false });
+      _cells.push({ i: _cells.length, c, r, nx, pos, flipInterval,
+        enter: pos * HERO.INTRO + Math.random() * 80,
+        nextFlip: Math.random() * flipInterval,
+        chaosColor: CHAOS[(Math.random() * CHAOS.length) | 0] });
     }
   }
-  _loopAt = maxLock + 2500;
 }
 
-function _paint(age) {
+// Switch times for cell in cycle k: [lock (noise → tile), free (tile → noise)].
+function _times(cell, k) {
+  const ck = HERO.T0 + k * HERO.PERIOD;
+  const tLock = ck + (1 - cell.pos) * HERO.TILE_SWEEP + _hash(cell.i, 2 * k) * HERO.J_LOCK;
+  const tFree = ck + HERO.TILE_SWEEP + HERO.J_LOCK + HERO.TILE_HOLD
+              + cell.pos * HERO.NOISE_SWEEP + _hash(cell.i, 2 * k + 1) * HERO.J_FREE;
+  return [tLock, tFree];
+}
+
+// Tile mix for a cell at time t (0 = noise, 1 = mosaic tile) and the time of its last switch.
+function _mix(cell, t) {
+  const k = Math.floor((t - HERO.T0) / HERO.PERIOD);
+  if (k < 0) return [0, -Infinity];
+  const [tLock, tFree] = _times(cell, k);
+  if (t >= tFree) return [1 - _clamp01((t - tFree) / HERO.FADE), tFree];
+  if (t >= tLock) return [_clamp01((t - tLock) / HERO.FADE), tLock];
+  if (k === 0) return [0, -Infinity];
+  const prevFree = _times(cell, k - 1)[1];
+  return [1 - _clamp01((t - prevFree) / HERO.FADE), prevFree];
+}
+
+function _paint(t) {
   hctx.clearRect(0, 0, _aw, _ah);
+  const cs = HERO.CELL - 1;
   for (const cell of _cells) {
-    const entered = age - cell.enterDelay;
-    if (entered < 0) continue;
-    const enterAlpha = Math.min(1, entered / 150);
-    if (!cell.locked && age >= cell.lockAt) cell.locked = true;
-    if (!cell.locked && age >= cell.nextFlip) {
-      cell.chaosColor = CHAOS[(Math.random() * CHAOS.length) | 0];
-      cell.nextFlip = age + cell.flipInterval * (0.5 + Math.random());
-    }
-    const cx = cell.c * CELL, cy = cell.r * CELL, cs = CELL - 1;
-    if (cell.locked && _target) {
-      hctx.globalAlpha = (0.42 + cell.nx * 0.20) * enterAlpha;
-      hctx.drawImage(_target, cx, cy, cs, cs, cx, cy, cs, cs);
-    } else {
-      hctx.globalAlpha = (0.26 + (1 - cell.nx) * 0.20) * enterAlpha;
+    const enterAlpha = _clamp01((t - cell.enter) / 150);
+    if (enterAlpha <= 0) continue;
+    const [m, since] = _mix(cell, t);
+    const cx = cell.c * HERO.CELL, cy = cell.r * HERO.CELL;
+
+    if (m < 1) {
+      if (t >= cell.nextFlip) {
+        cell.chaosColor = CHAOS[(Math.random() * CHAOS.length) | 0];
+        cell.nextFlip = t + cell.flipInterval * (0.5 + Math.random());
+      }
+      hctx.globalAlpha = (0.26 + (1 - cell.nx) * 0.20) * enterAlpha * (1 - m);
       hctx.fillStyle = cell.chaosColor;
+      hctx.fillRect(cx, cy, cs, cs);
+    }
+    if (m > 0 && _target) {
+      hctx.globalAlpha = (0.42 + cell.nx * 0.20) * enterAlpha * m;
+      hctx.drawImage(_target, cx, cy, cs, cs, cx, cy, cs, cs);
+    }
+    // Bright flash where the wave front passes.
+    const age = t - since;
+    if (HERO.FLASH > 0 && age >= 0 && age < 400) {
+      hctx.globalAlpha = HERO.FLASH * Math.exp(-age / 120) * enterAlpha;
+      hctx.fillStyle = '#F4F1EA';
       hctx.fillRect(cx, cy, cs, cs);
     }
   }
@@ -397,9 +450,7 @@ function _paint(age) {
 
 function _drawFrame(now) {
   if (!_heroVisible) { _rafId = null; return; }
-  const age = now - _start;
-  if (age > _loopAt) _buildCells();
-  else _paint(age);
+  _paint(now - _start);
   _rafId = requestAnimationFrame(_drawFrame);
 }
 
@@ -409,7 +460,13 @@ async function initHero() {
   if (_panelImgs.length === 0) _panelImgs = await _preloadPanels();
   _buildCells();
   _lastW = _aw;
-  if (REDUCED) { _cells.forEach(c => { c.enterDelay = 0; }); _paint(_loopAt); return; } // static, converged frame
+  if (REDUCED) { // static frame: every tile locked in, no flashes
+    _cells.forEach(c => { c.enter = -1e9; });
+    const flash = HERO.FLASH; HERO.FLASH = 0;
+    _paint(HERO.T0 + HERO.TILE_SWEEP + 800);
+    HERO.FLASH = flash;
+    return;
+  }
   _rafId = requestAnimationFrame(_drawFrame);
 }
 
@@ -418,10 +475,15 @@ window.addEventListener('resize', () => {
   clearTimeout(_resizeT);
   _resizeT = setTimeout(() => { if (hc.offsetWidth !== _lastW) initHero(); }, 150); // ignore mobile URL-bar height jitter
 });
-// Pause the animation while the hero is off-screen.
+// Pause the animation while the hero is off-screen (the timeline resumes where it left off).
+let _pausedAt = 0;
 new IntersectionObserver(es => es.forEach(e => {
   _heroVisible = e.isIntersecting;
-  if (_heroVisible && !_rafId && !REDUCED && _cells.length) _rafId = requestAnimationFrame(_drawFrame);
+  if (!_heroVisible) { _pausedAt = performance.now(); return; }
+  if (!_rafId && !REDUCED && _cells.length) {
+    if (_pausedAt) _start += performance.now() - _pausedAt;
+    _rafId = requestAnimationFrame(_drawFrame);
+  }
 })).observe(hc);
 
 // ── SCROLL REVEAL + NAV HIGHLIGHT ────────────────────────────
