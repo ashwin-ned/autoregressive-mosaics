@@ -85,7 +85,8 @@ a:hover{color:var(--x-org-h);border-color:var(--x-org-h)}
 .btn-b{border-color:rgba(91,127,230,0.7);color:var(--x-blu)}
 .btn-b:hover{background:var(--blu);border-color:var(--blu);color:var(--t)}
 .btn.dim{opacity:.45;cursor:default}
-.btn.dim:hover{background:rgb(var(--bg-rgb) / 0.55);color:var(--x-grn);border-color:rgba(42,157,143,0.7)}
+.btn-g.dim:hover{background:rgb(var(--bg-rgb) / 0.55);color:var(--x-grn);border-color:rgba(42,157,143,0.7)}
+.btn-b.dim:hover{background:rgb(var(--bg-rgb) / 0.55);color:var(--x-blu);border-color:rgba(91,127,230,0.7)}
 
 /* SECTIONS */
 main section{max-width:var(--w);margin:0 auto;padding:4rem 2rem;border-top:1px solid var(--br)}

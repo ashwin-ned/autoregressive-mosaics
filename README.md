@@ -8,7 +8,7 @@ Institute for Visual & Analytic Computing (VAC), University of Rostock
 
 **WACV 2027** · Exhibited at the **[CVPR 2026 Art Gallery](https://thecvf-art.com/project.php?year=2026&artist=ashwin-nedungadi&id=933)** (Denver) and the **[ECCV 2026 Art Gallery](https://eccv-art-26.github.io/)** (Malmö)
 
-[Project page](https://ashwin-ned.github.io/autoregressive-mosaics/) · [Paper (arXiv)](https://arxiv.org/abs/2608.30751) · [Poster](assets/Autoregressive_Mosaics_A0.pdf) · [Video](https://www.youtube.com/watch?v=9_7Cmhajiko) · [Live demo](https://huggingface.co/spaces/ashnedungadi/AutoregressiveMosaics)
+[Project page](https://ashwin-ned.github.io/autoregressive-mosaics/) · [Paper (arXiv)](https://arxiv.org/abs/2608.30751) · Poster (coming soon) · [Video](https://www.youtube.com/watch?v=9_7Cmhajiko) · [Live demo](https://huggingface.co/spaces/ashnedungadi/AutoregressiveMosaics)
 
 ![Autoregressive Mosaics Banner](results/banner_1920x1080.png)
 
@@ -36,7 +36,7 @@ These findings concern coarse, code-generated images and judge-dependent scores.
 This repository hosts the project website and the prototypes exhibited at the CVPR 2026 and ECCV 2026 Art Galleries. The gallery and demo are prototype outputs, separate from the paper's benchmark evaluation. AM-Bench code, prompts, and generations will be released via the project page.
 
 - `index.html`, `style.css`, `main.js`: project website.
-- `assets/`: poster, AM-Bench sample outputs, social preview image.
+- `assets/`: AM-Bench sample outputs, social preview image.
 - `gallery_images/`, `results/`: prototype outputs and visual assets.
 - `ver2-asciicanvas/`: ASCII grid and color-palette prototype.
 - `ver3-codecanvas/`: Python drawing-code prototype.
