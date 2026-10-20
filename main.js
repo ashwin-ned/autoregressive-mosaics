@@ -1,4 +1,206 @@
-// ── GALLERY ──────────────────────────────────────────────────
+'use strict';
+
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+
+// ── PAPER DATA (Tables 1–3) ───────────────────────────────────
+// Layout scores: [T1, T2, T3, Overall], 0–5, macro-averaged over subcategories.
+const MODELS = [
+  { n: 'GLM-4 32B',         f: 'glm',   s: 0, j1: [3.93, 3.14, 3.64, 3.57], j2: [4.55, 4.13, 4.31, 4.33], piou: 0.993 },
+  { n: 'Qwen2.5-Coder 32B', f: 'qwen',  s: 0, j1: [3.79, 3.07, 3.46, 3.44], j2: [4.53, 3.96, 4.03, 4.17], piou: 0.994 },
+  { n: 'Qwen2.5-Coder 14B', f: 'qwen',  s: 1, j1: [3.66, 3.02, 3.22, 3.30], j2: [4.35, 3.93, 4.11, 4.13], piou: 0.995 },
+  { n: 'Gemma 2 27B',       f: 'gemma', s: 0, j1: [3.31, 2.28, 3.18, 2.92], j2: [4.15, 3.43, 3.91, 3.83], piou: 0.992 },
+  { n: 'GLM-4 9B',          f: 'glm',   s: 1, j1: [3.27, 2.59, 2.76, 2.87], j2: [4.13, 3.44, 3.65, 3.74], piou: 0.991 },
+  { n: 'Gemma 2 9B',        f: 'gemma', s: 1, j1: [3.13, 2.09, 2.00, 2.41], j2: [4.09, 3.18, 2.70, 3.32], piou: 0.980 },
+  { n: 'Llama 3.1 8B',      f: 'llama', s: 1, j1: [2.41, 1.91, 1.79, 2.03], j2: [3.65, 2.81, 2.90, 3.12], piou: 0.929 },
+  { n: 'CodeLlama 34B',     f: 'llama', s: 0, j1: [2.31, 1.48, 1.47, 1.75], j2: [3.54, 2.55, 2.53, 2.87], piou: 0.984 },
+];
+const POOLED = { j1: [3.23, 2.45, 2.69, 2.79], j2: [4.12, 3.43, 3.52, 3.69] };
+const TIER_IDX = { t1: 0, t2: 1, t3: 2, all: 3 };
+
+// Table 3: nested-CV pooled R² (prompt TF-IDF vs residual-stream activations)
+const DECOMP = [
+  { n: 'GLM-4 32B', rows: [
+    { c: 'Own',      p: 0.121,  a: 0.318, sig: true },
+    { c: 'Shared',   p: 0.289,  a: 0.550, sig: true },
+    { c: 'Specific', p: -0.014, a: 0.005, sig: false },
+  ]},
+  { n: 'Gemma 2 27B', rows: [
+    { c: 'Own',      p: 0.085,  a: 0.306, sig: true },
+    { c: 'Shared',   p: 0.293,  a: 0.573, sig: true },
+    { c: 'Specific', p: -0.029, a: -0.005, sig: false },
+  ]},
+];
+
+// Exp 3 intervention: continuation rate, null_asis → moved_unused
+const CONT = [
+  { n: 'GLM-4 32B',   a: 43.8, b: 84.6 },
+  { n: 'Gemma 2 27B', a: 2.5,  b: 41.2 },
+];
+
+// ── LAYOUT-SCORE CHART ────────────────────────────────────────
+const chartState = { judge: 'j1', tier: 'all' };
+let chartRows = null;
+
+function buildChart() {
+  const host = $('#chart');
+  if (!host) return;
+  host.innerHTML = '';
+  const axis = el('div', 'c-axis');
+  for (let v = 0; v <= 5; v++) {
+    const g = el('div', 'c-grid'); g.style.left = (v / 5 * 100) + '%';
+    g.appendChild(el('span', null, String(v)));
+    axis.appendChild(g);
+  }
+  const thr = el('div', 'c-thr'); thr.style.left = '60%'; thr.title = 'Pass threshold 3.0';
+  axis.appendChild(thr);
+  host.appendChild(axis);
+
+  const head = el('div', 'cr cr-head');
+  head.append(el('div', 'cr-l', 'Model'), el('div', 'cr-track'), el('div', 'cr-piou', 'PIoU'));
+  host.appendChild(head);
+
+  chartRows = MODELS.map(m => {
+    const row = el('div', 'cr');
+    row.style.position = 'relative';
+    const lbl = el('div', 'cr-l', m.n); lbl.title = m.n;
+    const track = el('div', 'cr-track');
+    const bar = el('div', `cr-bar f-${m.f}${m.s ? ' s' : ''}`);
+    const val = el('div', 'cr-val');
+    track.append(bar, val);
+    row.append(lbl, track, el('div', 'cr-piou', m.piou.toFixed(3)));
+    host.appendChild(row);
+    return { m, row, bar, val };
+  });
+  host.style.position = 'relative';
+  updateChart();
+}
+
+function updateChart() {
+  if (!chartRows) return;
+  const k = TIER_IDX[chartState.tier];
+  const sorted = [...chartRows].sort((a, b) => b.m[chartState.judge][k] - a.m[chartState.judge][k]);
+  const host = $('#chart');
+  sorted.forEach(r => host.appendChild(r.row)); // re-order DOM
+  sorted.forEach(r => {
+    const v = r.m[chartState.judge][k];
+    const pct = v / 5 * 100;
+    r.bar.style.width = pct + '%';
+    r.val.style.left = pct + '%';
+    r.val.textContent = v.toFixed(2);
+    r.row.setAttribute('aria-label', `${r.m.n}: ${v.toFixed(2)} of 5; translation PIoU ${r.m.piou.toFixed(3)}`);
+  });
+}
+
+function bindSeg(attr, key) {
+  $$(`.seg-b[data-${attr}]`).forEach(b => b.addEventListener('click', () => {
+    $$(`.seg-b[data-${attr}]`).forEach(x => { x.classList.remove('act'); x.setAttribute('aria-selected', 'false'); });
+    b.classList.add('act'); b.setAttribute('aria-selected', 'true');
+    chartState[key] = b.dataset[attr];
+    updateChart();
+  }));
+}
+
+// ── FULL TABLE ────────────────────────────────────────────────
+function buildTable() {
+  const tb = $('#tbody');
+  if (!tb) return;
+  const best = { j1: [0, 1, 2, 3].map(i => Math.max(...MODELS.map(m => m.j1[i]))), j2: [0, 1, 2, 3].map(i => Math.max(...MODELS.map(m => m.j2[i]))) };
+  const bestP = Math.max(...MODELS.map(m => m.piou));
+  MODELS.forEach(m => {
+    const tr = el('tr');
+    tr.appendChild(el('td', null, m.n));
+    ['j1', 'j2'].forEach(j => m[j].forEach((v, i) => tr.appendChild(el('td', v === best[j][i] ? 'best' : null, v.toFixed(2)))));
+    tr.appendChild(el('td', m.piou === bestP ? 'best' : null, m.piou.toFixed(3)));
+    tb.appendChild(tr);
+  });
+  const tr = el('tr', 'pooled');
+  tr.appendChild(el('td', null, 'Pooled'));
+  ['j1', 'j2'].forEach(j => POOLED[j].forEach(v => tr.appendChild(el('td', null, v.toFixed(2)))));
+  tr.appendChild(el('td', null, '—'));
+  tb.appendChild(tr);
+}
+
+// ── DECOMPOSITION + CONTINUATION ─────────────────────────────
+function buildDecomp() {
+  const host = $('#decomp');
+  if (!host) return;
+  const MAX = 0.6;
+  const w = v => Math.max(0, v) / MAX * 100;
+  DECOMP.forEach(m => {
+    host.appendChild(el('div', 'dm', m.n));
+    m.rows.forEach(r => {
+      const row = el('div', 'dr');
+      row.appendChild(el('div', 'dr-l', r.c));
+      const bars = el('div', 'dr-bars');
+      [['p', r.p, ''], ['a', r.a, r.sig ? ' ***' : '']].forEach(([cls, v, star]) => {
+        const b = el('div', 'db ' + cls);
+        const i = el('i'); i.style.width = w(v) + '%';
+        const s = el('span', null, (v < 0 ? '−' : '') + Math.abs(v).toFixed(3) + star); s.style.left = w(v) + '%';
+        b.append(i, s); bars.appendChild(b);
+      });
+      row.appendChild(bars);
+      host.appendChild(row);
+    });
+  });
+}
+
+function buildCont() {
+  const host = $('#cont');
+  if (!host) return;
+  CONT.forEach(c => {
+    const card = el('div', 'cm');
+    const h = el('div', 'cm-h'); h.append(el('b', null, c.n), el('span', null, `${c.a}% → ${c.b}%`));
+    card.appendChild(h);
+    [['n', 'Unchanged', c.a], ['m', 'Moved', c.b]].forEach(([cls, lab, v]) => {
+      const r = el('div', 'cb ' + cls);
+      const t = el('div', 'cb-t'); const i = el('i'); i.dataset.w = v + '%'; i.style.width = REDUCED ? v + '%' : '0%';
+      t.appendChild(i);
+      r.append(el('div', 'cb-l', lab), t, el('div', 'cb-v', v.toFixed(1) + '%'));
+      card.appendChild(r);
+    });
+    host.appendChild(card);
+  });
+}
+
+// ── PIPELINE OCCUPANCY ILLUSTRATION ──────────────────────────
+function buildOcc() {
+  const host = $('.occ');
+  if (!host) return;
+  // Illustrative 6×6 occupancy: dense centre, sparse rays.
+  const g = [
+    .25, .05, .35, .35, .05, .25,
+    .05, .55, .85, .85, .55, .05,
+    .35, .85, 1, 1, .85, .35,
+    .35, .85, 1, 1, .85, .35,
+    .05, .55, .85, .85, .55, .05,
+    .25, .05, .35, .35, .05, .25,
+  ];
+  g.forEach(v => { const i = el('i'); i.style.opacity = (0.12 + 0.88 * v).toFixed(2); host.appendChild(i); });
+}
+
+// ── AM-BENCH SAMPLES ──────────────────────────────────────────
+const SAMPLES = [
+  'a yellow diamond on grey', 'a yellow sun with rays on blue', 'a red and blue checkerboard', 'a white shape inside a teal frame',
+  'concentric navy and white rings', 'a yellow fish on black', 'a red rounded shape', 'a striped red, white and blue flag',
+  'a grey mouse on beige', 'red, yellow and green lights on a pole', 'diagonal runs of colored squares', 'a black and white checkerboard',
+  'a house under a brown roofline on grass', 'six orange figures on black', 'a beach sunset with two palm trees',
+];
+function buildSamples() {
+  const host = $('#samples');
+  if (!host) return;
+  SAMPLES.forEach((alt, i) => {
+    const img = el('img');
+    img.src = `assets/am-bench/sample-${String(i + 1).padStart(2, '0')}.png`;
+    img.alt = `AM-Bench layout output: ${alt}`;
+    img.decoding = 'async'; img.width = 154; img.height = 154;
+    host.appendChild(img);
+  });
+}
+
+// ── PROTOTYPE GALLERY ─────────────────────────────────────────
 const gdata = [
   // Code Canvas
   {p: 'a red heart',                  t: 'code',  src: 'gallery_images/code-canvas/a-red-heart-1771859003512.png'},
@@ -44,39 +246,69 @@ const gdata = [
 ];
 
 let cf = 'all';
-
-function setF(t, btn) {
-  cf = t;
-  document.querySelectorAll('.fb').forEach(b => b.classList.remove('act'));
-  btn.classList.add('act');
-  renderG();
-}
-
 function renderG() {
-  const gg = document.getElementById('gg');
+  const gg = $('#gg');
+  if (!gg) return;
   gg.innerHTML = '';
   (cf === 'all' ? gdata : gdata.filter(d => d.t === cf)).forEach(item => {
-    const div = document.createElement('div'); div.className = 'gi';
-    const img = document.createElement('img');
-    img.src = item.src;
-    img.alt = item.p;
-    img.loading = 'lazy';
-    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = `"${item.p}"`;
-    const tag = document.createElement('div');
-    tag.className = 'ttag ' + (item.t === 'ascii' ? 'ascii' : 'code');
-    tag.textContent = item.t === 'ascii' ? 'ASCII' : 'Code';
-    div.append(img, lbl, tag);
-    gg.appendChild(div);
+    const label = item.t === 'ascii' ? 'ASCII canvas' : 'Code canvas';
+    const btn = el('button', 'gi'); btn.type = 'button';
+    btn.setAttribute('aria-label', `Enlarge: “${item.p}”, ${label}`);
+    const img = el('img'); img.src = item.src; img.alt = `${label} output for “${item.p}”`; img.loading = 'lazy';
+    const tag = el('div', 'ttag ' + item.t, item.t === 'ascii' ? 'ASCII' : 'Code');
+    btn.append(img, el('div', 'lbl', `“${item.p}”`), tag);
+    btn.addEventListener('click', () => openLb(item.src, `“${item.p}” · ${label}`, btn));
+    gg.appendChild(btn);
   });
 }
+$$('.fb').forEach(b => b.addEventListener('click', () => {
+  cf = b.dataset.f;
+  $$('.fb').forEach(x => { x.classList.remove('act'); x.setAttribute('aria-pressed', 'false'); });
+  b.classList.add('act'); b.setAttribute('aria-pressed', 'true');
+  renderG();
+}));
 
-renderG();
+// ── LIGHTBOX ─────────────────────────────────────────────────
+let lbReturn = null;
+function openLb(src, cap, from) {
+  const lb = $('#lb');
+  $('#lbimg').src = src; $('#lbimg').alt = cap; $('#lbcap').textContent = cap;
+  lb.hidden = false; lbReturn = from; $('#lbx').focus();
+  document.body.style.overflow = 'hidden';
+}
+function closeLb() {
+  $('#lb').hidden = true; document.body.style.overflow = '';
+  if (lbReturn) lbReturn.focus();
+}
+$('#lbx').addEventListener('click', closeLb);
+$('#lb').addEventListener('click', e => { if (e.target.id === 'lb') closeLb(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#lb').hidden) closeLb(); });
+
+// ── CITATION ─────────────────────────────────────────────────
+let curBib = 'wacv';
+$$('.bib-t').forEach(b => b.addEventListener('click', () => {
+  curBib = b.dataset.bib;
+  $$('.bib-t').forEach(x => { x.classList.remove('act'); x.setAttribute('aria-selected', 'false'); });
+  b.classList.add('act'); b.setAttribute('aria-selected', 'true');
+  $$('.bib-p').forEach(p => { p.hidden = p.id !== 'bib-' + curBib; });
+}));
+$('#cpbtn').addEventListener('click', () => {
+  const txt = $('#bib-' + curBib).textContent;
+  const done = () => { const b = $('#cpbtn'); b.textContent = 'Copied!'; setTimeout(() => (b.textContent = 'Copy'), 2000); };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done).catch(() => fallbackCopy(txt, done));
+  } else fallbackCopy(txt, done);
+});
+function fallbackCopy(txt, done) {
+  const ta = el('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (_) { /* ignore */ }
+  ta.remove();
+}
 
 // ── HERO CONVERGENCE ANIMATION ──────────────────────────────
-// Left: vibrant colorful chaos → Right: 4 mosaic images tiled side-by-side.
-// Uses drawImage (not getImageData) so it works on file:// and GitHub Pages alike.
-// Each image occupies exactly 25% of the canvas width.
-
+// Left: vibrant chaos → right: four mosaic panels. Uses drawImage only (no getImageData),
+// so it works on file:// and GitHub Pages alike.
 const PANEL_SRCS = [
   'symbolic-a-red-apple--1772103332350.png',
   'symbolic-king-tut-s-tomb-1772661687365.png',
@@ -84,7 +316,6 @@ const PANEL_SRCS = [
   'symbolic-a-bird-1772110130942.png',
 ];
 const QUARTET_FB = ['#E63946', '#FCD34D', '#2A9D8F', '#2B52C8'];
-
 const CHAOS = [
   '#E63946','#FF4D6D','#FF8500','#FCD34D','#CFFF04',
   '#2A9D8F','#06D6A0','#00B4D8','#3D66DC','#7B2FBE',
@@ -92,27 +323,18 @@ const CHAOS = [
   '#FF006E','#FB5607','#43AA8B','#277DA1','#F72585'
 ];
 
-const hc = document.getElementById('heroCvs');
+const hc = $('#heroCvs');
 const hctx = hc.getContext('2d');
 const CELL = 28;
+let _panelImgs = [], _target = null, _aw, _ah, _cells = [], _start, _rafId, _resizeT, _loopAt, _lastW = 0, _heroVisible = true;
 
-let _panelImgs = [];   // loaded HTMLImageElements
-let _target = null;    // offscreen canvas: 4 images tiled at hero dimensions
-let _aw, _ah, _cells = [], _start, _rafId, _resizeT, _loopAt;
-
-async function _preloadPanels() {
-  _panelImgs = await Promise.all(
-    PANEL_SRCS.map(src => new Promise(res => {
-      const img = new Image();
-      img.onload = () => res(img);
-      img.onerror = () => res(null);
-      img.src = src;
-    }))
-  );
+function _preloadPanels() {
+  return Promise.all(PANEL_SRCS.map(src => new Promise(res => {
+    const img = new Image();
+    img.onload = () => res(img); img.onerror = () => res(null); img.src = src;
+  })));
 }
 
-// Pre-render all 4 images into a single offscreen canvas at hero dimensions.
-// drawImage has no CORS restriction — no getImageData needed.
 function _buildTarget(w, h) {
   _target = document.createElement('canvas');
   _target.width = w; _target.height = h;
@@ -120,12 +342,8 @@ function _buildTarget(w, h) {
   ctx.imageSmoothingEnabled = false;
   const pw = w / 4;
   _panelImgs.forEach((img, i) => {
-    if (img) {
-      ctx.drawImage(img, i * pw, 0, pw, h);
-    } else {
-      ctx.fillStyle = QUARTET_FB[i];
-      ctx.fillRect(i * pw, 0, pw, h);
-    }
+    if (img) ctx.drawImage(img, i * pw, 0, pw, h);
+    else { ctx.fillStyle = QUARTET_FB[i]; ctx.fillRect(i * pw, 0, pw, h); }
   });
 }
 
@@ -135,12 +353,10 @@ function _buildCells() {
   hc.width = _aw; hc.height = _ah;
   hctx.imageSmoothingEnabled = false;
   _buildTarget(_aw, _ah);
-
   const cols = Math.ceil(_aw / CELL), rows = Math.ceil(_ah / CELL);
   _start = performance.now();
   _cells = [];
   let maxLock = 0;
-
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const nx = c / cols;
@@ -148,42 +364,25 @@ function _buildCells() {
       const lockAt = enterDelay + 200 + (1 - nx) * 4500 + Math.random() * 500;
       maxLock = Math.max(maxLock, lockAt);
       const flipInterval = 80 + nx * 340 + Math.random() * 140;
-
-      _cells.push({
-        c, r, nx,
-        chaosColor: CHAOS[Math.floor(Math.random() * CHAOS.length)],
-        nextFlip: enterDelay + Math.random() * flipInterval,
-        flipInterval, enterDelay, lockAt,
-        locked: false,
-      });
+      _cells.push({ c, r, nx, chaosColor: CHAOS[(Math.random() * CHAOS.length) | 0],
+        nextFlip: enterDelay + Math.random() * flipInterval, flipInterval, enterDelay, lockAt, locked: false });
     }
   }
   _loopAt = maxLock + 2500;
 }
 
-function _drawFrame(now) {
-  const age = now - _start;
-
-  if (age > _loopAt) {
-    _buildCells();
-    _rafId = requestAnimationFrame(_drawFrame);
-    return;
-  }
-
+function _paint(age) {
   hctx.clearRect(0, 0, _aw, _ah);
   for (const cell of _cells) {
     const entered = age - cell.enterDelay;
     if (entered < 0) continue;
     const enterAlpha = Math.min(1, entered / 150);
-
     if (!cell.locked && age >= cell.lockAt) cell.locked = true;
     if (!cell.locked && age >= cell.nextFlip) {
-      cell.chaosColor = CHAOS[Math.floor(Math.random() * CHAOS.length)];
+      cell.chaosColor = CHAOS[(Math.random() * CHAOS.length) | 0];
       cell.nextFlip = age + cell.flipInterval * (0.5 + Math.random());
     }
-
     const cx = cell.c * CELL, cy = cell.r * CELL, cs = CELL - 1;
-
     if (cell.locked && _target) {
       hctx.globalAlpha = (0.42 + cell.nx * 0.20) * enterAlpha;
       hctx.drawImage(_target, cx, cy, cs, cs, cx, cy, cs, cs);
@@ -194,32 +393,83 @@ function _drawFrame(now) {
     }
   }
   hctx.globalAlpha = 1;
+}
+
+function _drawFrame(now) {
+  if (!_heroVisible) { _rafId = null; return; }
+  const age = now - _start;
+  if (age > _loopAt) _buildCells();
+  else _paint(age);
   _rafId = requestAnimationFrame(_drawFrame);
 }
 
 async function initHero() {
   if (_rafId) cancelAnimationFrame(_rafId);
-  if (_panelImgs.length === 0) await _preloadPanels();
+  _rafId = null;
+  if (_panelImgs.length === 0) _panelImgs = await _preloadPanels();
   _buildCells();
+  _lastW = _aw;
+  if (REDUCED) { _cells.forEach(c => { c.enterDelay = 0; }); _paint(_loopAt); return; } // static, converged frame
   _rafId = requestAnimationFrame(_drawFrame);
 }
 
-setTimeout(initHero, 80);
-window.addEventListener('resize', () => { clearTimeout(_resizeT); _resizeT = setTimeout(initHero, 100); });
+setTimeout(initHero, 60);
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeT);
+  _resizeT = setTimeout(() => { if (hc.offsetWidth !== _lastW) initHero(); }, 150); // ignore mobile URL-bar height jitter
+});
+// Pause the animation while the hero is off-screen.
+new IntersectionObserver(es => es.forEach(e => {
+  _heroVisible = e.isIntersecting;
+  if (_heroVisible && !_rafId && !REDUCED && _cells.length) _rafId = requestAnimationFrame(_drawFrame);
+})).observe(hc);
 
-// ── COPY BIBTEX ──────────────────────────────────────────────
-function doCopy() {
-  const txt = document.getElementById('bibtex').textContent;
-  navigator.clipboard.writeText(txt).then(() => {
-    const b = document.getElementById('cpbtn');
-    b.textContent = 'Copied!';
-    setTimeout(() => b.textContent = 'Copy', 2000);
+// ── SCROLL REVEAL + NAV HIGHLIGHT ────────────────────────────
+const revealObs = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add('vis');
+  $$('.cb-t i', e.target).forEach(i => (i.style.width = i.dataset.w));
+  revealObs.unobserve(e.target);
+}), { threshold: 0.04 });
+
+const navLinks = $$('.nav-links a');
+const navObs = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  navLinks.forEach(a => a.classList.toggle('cur', a.getAttribute('href') === '#' + e.target.id));
+}), { rootMargin: '-45% 0px -50% 0px' });
+
+// ── INIT ─────────────────────────────────────────────────────
+buildOcc();
+buildSamples();
+buildChart();
+bindSeg('judge', 'judge');
+bindSeg('tier', 'tier');
+buildTable();
+buildDecomp();
+buildCont();
+renderG();
+$$('.rv').forEach(s => revealObs.observe(s));
+['abstract', 'benchmark', 'results', 'art', 'cite'].forEach(id => { const s = document.getElementById(id); if (s) navObs.observe(s); });
+
+// ── DAY / NIGHT TOGGLE ───────────────────────────────────────
+(function () {
+  const btn = document.getElementById('themeBtn');
+  if (!btn) return;
+  const root = document.documentElement;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const sync = () => {
+    const light = root.dataset.theme === 'light';
+    const label = light ? 'Switch to dark theme' : 'Switch to light theme';
+    btn.setAttribute('aria-label', label); btn.title = label;
+    btn.setAttribute('aria-pressed', String(light));
+    if (meta) meta.content = light ? '#F4EFE4' : '#0B0B0C';
+  };
+  btn.addEventListener('click', () => {
+    const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+    if (!REDUCED) { root.classList.add('theming'); setTimeout(() => root.classList.remove('theming'), 400); }
+    if (next === 'light') root.dataset.theme = 'light'; else delete root.dataset.theme;
+    try { localStorage.setItem('am-theme', next); } catch (_) { /* storage unavailable */ }
+    sync();
   });
-}
-
-// ── SCROLL REVEAL ─────────────────────────────────────────────
-const obs = new IntersectionObserver(
-  es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add('vis'); }),
-  { threshold: 0.06 }
-);
-document.querySelectorAll('.rv').forEach(el => obs.observe(el));
+  sync();
+})();
